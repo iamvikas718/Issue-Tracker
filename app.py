@@ -14,12 +14,11 @@ from services import (
 from domain import TransitionError
 
 app = Flask(__name__)
-CORS(
-    app,
-    resources={r"/api/*": {"origins": "*"}},
-    supports_credentials=False,
-)
-
+CORS(app, origins=[
+    "https://iamvikas718.github.io",
+    "http://localhost:8080",
+    "http://127.0.0.1:5500"
+])
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
