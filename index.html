@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Issue Tracker Lite</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #141416;
+    --surface2: #1c1c1f;
+    --border: #2a2a2e;
+    --border-bright: #3d3d44;
+    --text: #e8e8ec;
+    --text-dim: #7a7a85;
+    --text-muted: #4a4a55;
+    --accent: #f0c040;
+    --accent-dim: rgba(240,192,64,0.12);
+    --open: #4a9eff;
+    --open-bg: rgba(74,158,255,0.10);
+    --progress: #f0a040;
+    --progress-bg: rgba(240,160,64,0.10);
+    --done: #50c878;
+    --done-bg: rgba(80,200,120,0.10);
+    --danger: #ff5555;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+    --radius: 3px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Grid noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #root { position: relative; z-index: 1; }
+
+  /* Layout */
+  .app { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .sidebar-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    letter-spacing: 0.05em;
+  }
+
+  .sidebar-section {
+    padding: 12px 16px 8px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .project-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+  .project-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-left: 2px solid transparent;
+  }
+
+  .project-item:hover { background: var(--surface2); }
+  .project-item.active {
+    background: var(--accent-dim);
+    border-left-color: var(--accent);
+  }
+
+  .project-item .proj-icon {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 20px;
+  }
+
+  .project-item .proj-name {
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .project-item.active .proj-name { color: var(--accent); }
+
+  .new-project-form {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Main content */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .topbar-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: 0.05em;
+  }
+
+  .topbar-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .content { padding: 32px; flex: 1; overflow-y: auto; }
+
+  /* Empty state */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 12px;
+    color: var(--text-muted);
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    opacity: 0.3;
+    font-family: var(--font-mono);
+    letter-spacing: -4px;
+  }
+
+  .empty p { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; }
+
+  /* Issues grid */
+  .issues-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .issue-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+  }
+
+  .issue-table th {
+    padding: 8px 14px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  .issue-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  .issue-table tr:last-child td { border-bottom: none; }
+
+  .issue-table tbody tr {
+    background: var(--surface);
+    transition: background 0.1s;
+  }
+
+  .issue-table tbody tr:hover { background: var(--surface2); }
+
+  .issue-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .issue-title {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .issue-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  /* Status badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .badge-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+
+  .badge.OPEN { background: var(--open-bg); color: var(--open); border: 1px solid rgba(74,158,255,0.2); }
+  .badge.OPEN .badge-dot { background: var(--open); box-shadow: 0 0 4px var(--open); }
+
+  .badge.IN_PROGRESS { background: var(--progress-bg); color: var(--progress); border: 1px solid rgba(240,160,64,0.2); }
+  .badge.IN_PROGRESS .badge-dot { background: var(--progress); box-shadow: 0 0 4px var(--progress); }
+
+  .badge.DONE { background: var(--done-bg); color: var(--done); border: 1px solid rgba(80,200,120,0.2); }
+  .badge.DONE .badge-dot { background: var(--done); }
+
+  /* Transition controls */
+  .transition-btn {
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border: 1px solid var(--border-bright);
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    transition: all 0.15s;
+  }
+
+  .transition-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .transition-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* Forms / Inputs */
+  .input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    border-radius: var(--radius);
+    transition: border-color 0.15s;
+    outline: none;
+  }
+
+  .input:focus { border-color: var(--accent); }
+  .input::placeholder { color: var(--text-muted); }
+
+  .btn {
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+    border-radius: var(--radius);
+    font-weight: 600;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: #f5d060; border-color: #f5d060; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border-color: var(--border-bright);
+  }
+
+  .btn-ghost:hover { border-color: var(--text-dim); color: var(--text); background: transparent; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.15s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    width: 480px;
+    max-width: 95vw;
+    animation: slideUp 0.2s ease;
+  }
+
+  @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+    transition: color 0.1s;
+  }
+
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  .field-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  textarea.input { resize: vertical; min-height: 72px; }
+
+  /* Toast */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 200;
+  }
+
+  .toast {
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    animation: slideLeft 0.2s ease;
+    max-width: 320px;
+  }
+
+  @keyframes slideLeft { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  .toast.success { background: var(--done-bg); color: var(--done); border: 1px solid rgba(80,200,120,0.3); }
+  .toast.error { background: rgba(255,85,85,0.1); color: var(--danger); border: 1px solid rgba(255,85,85,0.3); }
+
+  /* State machine diagram */
+  .state-diagram {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .state-node {
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .state-arrow { color: var(--text-muted); }
+
+  .inline-form { display: flex; gap: 8px; }
+
+  .count-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+const { useState, useEffect, useCallback, useRef } = React;
+
+const API = 'http://localhost:5000/api';
+
+// ── API client ──────────────────────────────────────────────────────────────
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Unknown error');
+  return json.data;
+}
+
+const api = {
+  listProjects: () => apiFetch('/projects'),
+  createProject: (name) => apiFetch('/projects', { method: 'POST', body: JSON.stringify({ name }) }),
+  listIssues: (pid) => apiFetch(`/projects/${pid}/issues`),
+  createIssue: (pid, title, description) =>
+    apiFetch(`/projects/${pid}/issues`, { method: 'POST', body: JSON.stringify({ title, description }) }),
+  transition: (iid, status) =>
+    apiFetch(`/issues/${iid}/transition`, { method: 'POST', body: JSON.stringify({ status }) }),
+};
+
+// ── Status config ───────────────────────────────────────────────────────────
+
+const STATUS_NEXT = { OPEN: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: null };
+const STATUS_LABEL = { OPEN: 'OPEN', IN_PROGRESS: 'IN_PROGRESS', DONE: 'DONE' };
+const NEXT_LABEL = { OPEN: '→ Start', IN_PROGRESS: '→ Done', DONE: null };
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+
+function useToasts() {
+  const [toasts, setToasts] = useState([]);
+  const add = useCallback((msg, type = 'success') => {
+    const id = Date.now();
+    setToasts(t => [...t, { id, msg, type }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500);
+  }, []);
+  return { toasts, add };
+}
+
+function ToastContainer({ toasts }) {
+  return React.createElement('div', { className: 'toast-container' },
+    toasts.map(t =>
+      React.createElement('div', { key: t.id, className: `toast ${t.type}` }, t.msg)
+    )
+  );
+}
+
+// ── Badge ───────────────────────────────────────────────────────────────────
+
+function Badge({ status }) {
+  return React.createElement('span', { className: `badge ${status}` },
+    React.createElement('span', { className: 'badge-dot' }),
+    STATUS_LABEL[status]
+  );
+}
+
+// ── Modal: Create Issue ─────────────────────────────────────────────────────
+
+function CreateIssueModal({ projectId, onClose, onCreated }) {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const titleRef = useRef();
+
+  useEffect(() => { titleRef.current?.focus(); }, []);
+
+  async function handleSubmit() {
+    if (!title.trim()) { setErr('Title is required.'); return; }
+    setLoading(true); setErr('');
+    try {
+      const issue = await api.createIssue(projectId, title.trim(), desc.trim());
+      onCreated(issue);
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) handleSubmit(); }
+
+  return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+    React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
+      React.createElement('div', { className: 'modal-header' },
+        React.createElement('span', { className: 'modal-title' }, '// New Issue'),
+        React.createElement('button', { className: 'modal-close', onClick: onClose }, '×')
+      ),
+      React.createElement('div', { className: 'modal-body' },
+        React.createElement('div', { className: 'field' },
+          React.createElement('label', { className: 'field-label' }, 'Title'),
+          React.createElement('input', {
+            ref: titleRef,
+            className: 'input',
+            placeholder: 'Describe the issue concisely…',
+            value: title,
+            onChange: e => setTitle(e.target.value),
+            onKeyDown: handleKey,
+          })
+        ),
+        React.createElement('div', { className: 'field' },
+          React.createElement('label', { className: 'field-label' }, 'Description (optional)'),
+          React.createElement('textarea', {
+            className: 'input',
+            placeholder: 'Additional context, steps to reproduce, etc.',
+            value: desc,
+            onChange: e => setDesc(e.target.value),
+          })
+        ),
+        err && React.createElement('div', { style: { color: 'var(--danger)', fontFamily: 'var(--font-mono)', fontSize: 11 } }, '⚠ ' + err)
+      ),
+      React.createElement('div', { className: 'modal-footer' },
+        React.createElement('button', { className: 'btn btn-ghost', onClick: onClose }, 'Cancel'),
+        React.createElement('button', { className: 'btn', onClick: handleSubmit, disabled: loading },
+          loading ? 'Creating…' : 'Create Issue'
+        )
+      )
+    )
+  );
+}
+
+// ── Issue Row ───────────────────────────────────────────────────────────────
+
+function IssueRow({ issue, onTransitioned, onError }) {
+  const [loading, setLoading] = useState(false);
+  const nextStatus = STATUS_NEXT[issue.status];
+
+  async function handleTransition() {
+    if (!nextStatus) return;
+    setLoading(true);
+    try {
+      const updated = await api.transition(issue.id, nextStatus);
+      onTransitioned(updated);
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return React.createElement('tr', null,
+    React.createElement('td', null,
+      React.createElement('span', { className: 'issue-id' }, `#${String(issue.id).padStart(3, '0')}`)
+    ),
+    React.createElement('td', null,
+      React.createElement('div', { className: 'issue-title' }, issue.title),
+      issue.description && React.createElement('div', { className: 'issue-desc' }, issue.description)
+    ),
+    React.createElement('td', null, React.createElement(Badge, { status: issue.status })),
+    React.createElement('td', null,
+      nextStatus
+        ? React.createElement('button', {
+            className: 'transition-btn',
+            onClick: handleTransition,
+            disabled: loading,
+          }, loading ? '…' : NEXT_LABEL[issue.status])
+        : React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' } }, '—')
+    )
+  );
+}
+
+// ── Issue Board ─────────────────────────────────────────────────────────────
+
+function IssueBoardPage({ project, toast }) {
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    api.listIssues(project.id)
+      .then(setIssues)
+      .catch(e => toast.add(e.message, 'error'))
+      .finally(() => setLoading(false));
+  }, [project.id]);
+
+  function handleTransitioned(updated) {
+    setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
+    toast.add(`Issue #${updated.id} moved to ${updated.status}`);
+  }
+
+  function handleCreated(issue) {
+    setIssues(prev => [...prev, issue]);
+    toast.add(`Issue #${issue.id} created`);
+  }
+
+  const counts = { OPEN: 0, IN_PROGRESS: 0, DONE: 0 };
+  issues.forEach(i => counts[i.status]++);
+
+  return React.createElement('div', null,
+    React.createElement('div', { className: 'topbar' },
+      React.createElement('div', null,
+        React.createElement('div', { className: 'topbar-title' }, project.name),
+        React.createElement('div', { className: 'topbar-meta', style: { marginTop: 4 } },
+          `${issues.length} issue${issues.length !== 1 ? 's' : ''} · ${counts.OPEN} open · ${counts.IN_PROGRESS} in progress · ${counts.DONE} done`
+        )
+      ),
+      React.createElement('button', { className: 'btn', onClick: () => setShowModal(true) }, '+ New Issue')
+    ),
+    React.createElement('div', { className: 'content' },
+      React.createElement('div', { className: 'issues-header' },
+        React.createElement('span', { className: 'section-label' }, `// Issues`),
+        React.createElement('div', { className: 'state-diagram' },
+          React.createElement('span', { className: 'state-node badge OPEN' }, 'OPEN'),
+          React.createElement('span', { className: 'state-arrow' }, '→'),
+          React.createElement('span', { className: 'state-node badge IN_PROGRESS' }, 'IN_PROGRESS'),
+          React.createElement('span', { className: 'state-arrow' }, '→'),
+          React.createElement('span', { className: 'state-node badge DONE' }, 'DONE'),
+        )
+      ),
+      loading
+        ? React.createElement('div', { style: { color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 } }, 'Loading…')
+        : issues.length === 0
+          ? React.createElement('div', { className: 'empty' },
+              React.createElement('div', { className: 'empty-icon' }, '[ ]'),
+              React.createElement('p', null, 'NO ISSUES YET'),
+              React.createElement('p', { style: { color: 'var(--text-muted)', fontSize: 10 } }, 'Create one to get started')
+            )
+          : React.createElement('table', { className: 'issue-table' },
+              React.createElement('thead', null,
+                React.createElement('tr', null,
+                  React.createElement('th', null, 'ID'),
+                  React.createElement('th', null, 'Title'),
+                  React.createElement('th', null, 'Status'),
+                  React.createElement('th', null, 'Action'),
+                )
+              ),
+              React.createElement('tbody', null,
+                issues.map(issue =>
+                  React.createElement(IssueRow, {
+                    key: issue.id,
+                    issue,
+                    onTransitioned: handleTransitioned,
+                    onError: msg => toast.add(msg, 'error'),
+                  })
+                )
+              )
+            )
+    ),
+    showModal && React.createElement(CreateIssueModal, {
+      projectId: project.id,
+      onClose: () => setShowModal(false),
+      onCreated: handleCreated,
+    })
+  );
+}
+
+// ── Sidebar ─────────────────────────────────────────────────────────────────
+
+function Sidebar({ projects, selected, onSelect, onCreated, toast }) {
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleCreate(e) {
+    e && e.preventDefault();
+    if (!name.trim()) return;
+    setLoading(true);
+    try {
+      const p = await api.createProject(name.trim());
+      onCreated(p);
+      setName('');
+      toast.add(`Project "${p.name}" created`);
+    } catch (err) {
+      toast.add(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKey(e) { if (e.key === 'Enter') handleCreate(); }
+
+  return React.createElement('div', { className: 'sidebar' },
+    React.createElement('div', { className: 'sidebar-header' },
+      React.createElement('div', { className: 'logo' }, 'Issue Tracker'),
+      React.createElement('div', { className: 'logo-sub' }, 'v0.1.0 // lite')
+    ),
+    React.createElement('div', { className: 'sidebar-section' }, 'Projects'),
+    React.createElement('div', { className: 'project-list' },
+      projects.length === 0
+        ? React.createElement('div', { style: { padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' } }, 'No projects yet')
+        : projects.map((p, i) =>
+            React.createElement('div', {
+              key: p.id,
+              className: `project-item${selected?.id === p.id ? ' active' : ''}`,
+              onClick: () => onSelect(p),
+            },
+              React.createElement('span', { className: 'proj-icon' }, String(i + 1).padStart(2, '0')),
+              React.createElement('span', { className: 'proj-name' }, p.name)
+            )
+          )
+    ),
+    React.createElement('div', { className: 'new-project-form' },
+      React.createElement('div', { className: 'field', style: { marginBottom: 8 } },
+        React.createElement('label', { className: 'field-label' }, 'New Project'),
+        React.createElement('input', {
+          className: 'input',
+          placeholder: 'Project name…',
+          value: name,
+          onChange: e => setName(e.target.value),
+          onKeyDown: handleKey,
+          style: { fontSize: 12 },
+        })
+      ),
+      React.createElement('button', {
+        className: 'btn',
+        onClick: handleCreate,
+        disabled: loading || !name.trim(),
+        style: { width: '100%' },
+      }, loading ? 'Creating…' : '+ Create')
+    )
+  );
+}
+
+// ── Welcome screen ──────────────────────────────────────────────────────────
+
+function Welcome() {
+  return React.createElement('div', null,
+    React.createElement('div', { className: 'topbar' },
+      React.createElement('div', { className: 'topbar-title' }, '// Dashboard'),
+    ),
+    React.createElement('div', { className: 'content' },
+      React.createElement('div', { className: 'empty' },
+        React.createElement('div', { className: 'empty-icon' }, '{ }'),
+        React.createElement('p', null, 'SELECT A PROJECT'),
+        React.createElement('p', { style: { color: 'var(--text-muted)', fontSize: 10, marginTop: 4 } }, 'or create one in the sidebar')
+      )
+    )
+  );
+}
+
+// ── App ─────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [projects, setProjects] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const toast = useToasts();
+
+  useEffect(() => {
+    api.listProjects()
+      .then(ps => { setProjects(ps); })
+      .catch(() => toast.add('Could not connect to backend. Is it running?', 'error'));
+  }, []);
+
+  function handleCreated(p) {
+    setProjects(prev => [...prev, p]);
+    setSelected(p);
+  }
+
+  return React.createElement('div', { className: 'app' },
+    React.createElement(Sidebar, {
+      projects,
+      selected,
+      onSelect: setSelected,
+      onCreated: handleCreated,
+      toast,
+    }),
+    React.createElement('div', { className: 'main' },
+      selected
+        ? React.createElement(IssueBoardPage, { project: selected, toast })
+        : React.createElement(Welcome)
+    ),
+    React.createElement(ToastContainer, { toasts: toast.toasts })
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
